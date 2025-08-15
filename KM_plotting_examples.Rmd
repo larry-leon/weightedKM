@@ -1,0 +1,327 @@
+---
+title: "KM plotting with R base"
+author: "Larry Leon"
+date: "2024-05-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn = -1)
+```
+
+
+```{=latex}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{longtable}
+\usepackage{enumerate}
+\usepackage{threeparttable}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage[colorlinks=true,linkcolor={blue},citecolor={black},urlcolor={blue},runcolor={blue}]{hyperref}
+\usepackage{verbatim}
+\newcommand{\fh}[2]{\ensuremath{\hbox{FH}({{#1},{#2}})}}
+```
+
+```{r RCode, include=TRUE}
+rm(list=ls())
+suppressMessages(library(survival,quietly=TRUE))
+suppressMessages(library(survminer,quietly=TRUE))
+# survminer not needed but used for comparison
+
+# library(devtools)
+# devtools::install_github("larry-leon/weightedKM")
+
+library(weightedKM)
+
+```
+
+## Example using subset of GBSG dataset from base survival library
+
+```{r GBSGdata, include=TRUE, fig.width=8, fig.height=6}
+# zero estrogen subset of gbst dataset
+df <- subset(gbsg, er==0)
+
+# rfstime is time to recurrence in days
+# convert to months
+df$time_months <- df$rfstime/30.4375 
+
+tte.name<-c("time_months")
+event.name<-c("status")
+treat.name<-c("hormon")
+
+byrisk <- 12
+
+par(mfrow=c(1,2))
+
+# "risk_offset" sets space for risk-set by offsetting ymin to ymin-risk_offset
+# Eg, if ymin=0 and risk_offset=0.075 then a space of 0.075 is allowed for risk-set
+# The ymin-risk_offset sets risk-set y-coordinate for the treatment arm ("experimental")
+# risk_delta is distance between treatment and control arm risk-sets
+# Eg, if risk_delta=0.025 then space of risk_offset+risk_delta is provided
+# with distance between y-corrdinates of 0.025
+
+kmH.fit<-KM_plot_2sample_weighted(df=df, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name,
+risk.set=TRUE,by.risk=byrisk,risk.cex=0.725,
+risk_offset=0.125, risk_delta=0.05,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+ltys=c(1,1),lwds=c(2,2),
+cox.cex=0.65,
+show.logrank=FALSE, lr.digits=2, put.legend.lr="top",
+show.med=FALSE,
+show.cox=TRUE, cox.digits=2)
+title(sub="Estrogen = 0")
+
+# In the above plot notice the risk-sets are a bit too close together
+
+# Next, increase risk_offset to increase the risk-set space
+# and increase risk_delta to allow for more space between
+
+kmH.fit<-KM_plot_2sample_weighted(df=df, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name,
+risk.set=TRUE,by.risk=byrisk,risk.cex=0.725,
+risk_offset=0.150, risk_delta=0.06,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+ltys=c(1,1),lwds=c(2,2),
+cox.cex=0.65,
+show.logrank=FALSE, lr.digits=2,
+show.med=FALSE,
+show.cox=TRUE, cox.digits=2)
+title(sub="Estrogen = 0")
+
+```
+
+
+# Compare last graph with survfit and survminer
+
+```{r survminer, include=TRUE, fig.width=6, fig.height=4}
+# Compare with survfit and survminer
+
+kmH.fit<-KM_plot_2sample_weighted(df=df, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name, 
+risk.set=TRUE,by.risk=byrisk,risk.cex=0.725,
+risk_offset=0.15, risk_delta=0.075,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+ltys=c(1,1),lwds=c(2,2),
+show.logrank=FALSE, lr.digits=2,
+show.med=TRUE,
+show.cox=TRUE, cox.digits=2)
+
+
+fit.km <- survfit(Surv(time_months,status)~hormon,data=df)
+
+ggsurvplot(fit.km,conf.int=FALSE,risk.table = TRUE, break.time.by=12, xlim=c(0,86),
+tables.height = 0.2,tables.theme = theme_cleantable(),censor=TRUE)
+
+```
+
+
+# Artificially create a tied censored and event observation at last time point; compare with survfit and survminer
+
+```{r Addtied, include=TRUE, fig.width=6, fig.height=4}
+# Artificially add duplicate of longest censored time
+# but change censoring to event to check that a censoring mark is present
+df_add <- subset(df,pid==51)
+df_add$status <- 1.0
+
+df_mod <- rbind(df,df_add)
+
+fit.km <- survfit(Surv(time_months,status)~hormon,data=df_mod)
+
+ggsurvplot(fit.km,conf.int=FALSE,risk.table = TRUE, break.time.by=12, xlim=c(0,86),
+tables.height = 0.2,tables.theme = theme_cleantable(),censor=TRUE)
+
+kmH.fit<-KM_plot_2sample_weighted(df=df_mod, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name,
+risk.set=TRUE,by.risk=byrisk,risk.cex=0.725,
+risk_offset=0.15, risk_delta=0.075,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+ltys=c(1,1),lwds=c(2,2),
+show.logrank=TRUE, lr.digits=2,
+show.med=FALSE,
+show.cox=TRUE, cox.digits=3)
+
+# Survfit also marks the censoring;
+# seems "in the middle of the jump"
+
+plot(fit.km,mark.time=TRUE)
+```
+
+
+
+
+# Include the medians in the plot and compare with survfit/survdiff
+
+```{r Showmedians, include=TRUE, fig.width=8, fig.height=6}
+
+# Go back to original dataset df()
+# Show the medians
+# Revise probability points to illustrate option: 0 to 1 by 0.1
+# Though probably prefer 0, 0.25, 0.75, 1.0
+
+# Also check with survfit, and survdiff to compare estimates
+# The "details=TRUE" option prints the comparison results
+
+kmH.fit<-KM_plot_2sample_weighted(df=df, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name,
+risk.set=TRUE,by.risk=byrisk,risk.cex=0.725,
+risk_offset=0.15, risk_delta=0.075,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+ltys=c(1,1),lwds=c(2,2),
+show.logrank=TRUE, lr.digits=2,
+show.med=TRUE, med.cex=0.75, ymed.offset=0.35, del.med=0.10, xmed.offset=5, qlabel=c("median ="),
+prob.points=seq(0,1,by=0.1),
+show.cox=TRUE, cox.digits=2)
+
+```
+
+
+# Weighted Kaplan-Meier (stabilized propensity score) using Rotterdam data
+
+```{r PSweighting, include=TRUE, fig.width=8, fig.height=6}
+# Following Therneau example
+gbsg_validate <-within(rotterdam,{
+rfstime <- ifelse(recur==1,rtime,dtime)
+#rfstime <- pmin(rtime,dtime)
+t_months<-rfstime/30.4375
+time_months <- t_months
+status <- pmax(recur,death)
+# censor if beyond 84 months ?
+#time_months <- pmin(t_months,84)
+#status <- ifelse(status==1 & t_months <= 84,1,0)
+# Second version (conservative per Therneau)
+ignore <- (recur==0 & death==1 & rtime < dtime)
+status2 <- ifelse(recur==1 | ignore, recur, death)
+rfstime2 <- ifelse(recur==1 | ignore, rtime,dtime)
+time_months2 <- rfstime2/30.4375
+grade3 <- ifelse(grade=="3",1,0)
+treat <- hormon
+id<-as.numeric(c(1:nrow(rotterdam)))  
+SG0 <- ifelse(er<=0,0,1)
+})
+# Check subject 40 who was censored at recurrence but death afterwards
+# Event at 6.6 years
+#subset(gbsg_validate,pid==40)
+tte.name<-c("time_months")
+event.name<-c("status")
+treat.name<-c("treat")
+wt.name <- c("sw.weights")
+# node positive to match gbsg?
+df <- subset(gbsg_validate, nodes > 0)
+
+fit.ps <- glm(treat ~ age+meno+size+grade3+nodes+pgr+chemo+er, data=df, family="binomial")
+pihat <- fit.ps$fitted
+pihat.null <- glm(treat ~ 1, family="binomial", data=df)$fitted
+wt.1 <- pihat.null/pihat
+wt.0 <- (1-pihat.null)/(1-pihat)
+# Stabilized weight
+df$sw.weights <- ifelse(df$treat==1, wt.1,wt.0)
+
+# Compare un-weighted to weighted
+
+#par(mfrow=c(1,2))
+
+# Follow-up is much longer here
+byrisk <- 24
+# Note: here the censoring marks look kinda too big here
+# reduce with censor.cex=0.9 (1.0 is default)
+
+# Setting time.zero to a large negative numberto give extra room for risk set label
+# however this is labelled (time.zero.label) as zero since --- in this application --
+# the outcomes are non-negative so it's just a re-labelling allowing for extra space in 
+# the risk-set margins
+
+# Un-weighted (default)
+kmH.fit<-KM_plot_2sample_weighted(df=df, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name,
+risk.set=TRUE, by.risk=byrisk, risk.cex=0.70, time.zero=-100, time.zero.label=0.0, 
+censor.cex=0.5,
+risk_offset=0.15, risk_delta=0.075,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+ltys=c(1,1),lwds=c(1,1),
+show.logrank=TRUE, lr.digits=2,
+show.med=TRUE, med.cex=0.75, ymed.offset=0.15, del.med=0.10, xmed.offset=10, qlabel=c("median ="),
+show.cox=TRUE, cox.cex=0.70, cox.digits=3)
+
+
+# Weighted 
+# Turn off the Y-axis (show.Y.axis=FALSE) if want to show side-by-side
+# keep on for here (which is default)
+
+kmH.fit<-KM_plot_2sample_weighted(df=df, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name,
+weight.name=c("sw.weights"),
+show.Y.axis=TRUE,
+risk.set=TRUE,by.risk=byrisk,risk.cex=0.70, time.zero=-100, time.zero.label=0.0, 
+censor.cex=0.5,
+risk_offset=0.15, risk_delta=0.075,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+ltys=c(1,1),lwds=c(1,1),
+show.logrank=TRUE, lr.digits=2,
+show.med=TRUE, med.cex=0.75, ymed.offset=0.15, del.med=0.10, xmed.offset=10, qlabel=c("median ="),
+show.cox=TRUE, cox.cex=0.70, cox.digits=3)
+
+
+```
+
+```{r, fig.width=10, fig.height=8}
+
+# side-by-side 
+par(mfrow=c(1,2))
+
+# Un-weighted (default)
+kmH.fit<-KM_plot_2sample_weighted(df=df, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name,
+risk.set=TRUE, by.risk=byrisk, risk.cex=0.70, time.zero=-100, time.zero.label=0.0, 
+censor.cex=0.5,
+risk_offset=0.15, risk_delta=0.075,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+arm.cex=0.80,
+ltys=c(1,1),lwds=c(1,1),
+show.logrank=FALSE, lr.digits=2,
+show.med=TRUE, med.cex=0.80, ymed.offset=0.15, del.med=0.05, xmed.offset=25, qlabel=c("median ="),
+show.cox=TRUE, cox.cex=0.80, cox.digits=2)
+
+
+# Weighted 
+# Turn off the Y-axis (show.Y.axis=FALSE) if want to show side-by-side
+# keep on for here (which is default)
+
+kmH.fit <- KM_plot_2sample_weighted(df=df, 
+tte.name=tte.name, event.name=event.name, treat.name=treat.name,
+weight.name=c("sw.weights"),
+show.Y.axis=TRUE,
+risk.set=TRUE,by.risk=byrisk,risk.cex=0.70, time.zero=-100, time.zero.label=0.0, 
+censor.cex=0.5,
+risk_offset=0.15, risk_delta=0.075,
+Xlab="Months",Ylab="Recurrence-free Survival",
+show.ticks=TRUE,
+col.1="black", col.2="blue",
+arm.cex=0.80,
+ltys=c(1,1),lwds=c(1,1),
+show.logrank=FALSE, lr.digits=2, logrank.cex=0.60,
+show.med=TRUE, med.cex=0.80, ymed.offset=0.15, del.med=0.05, xmed.offset=25, qlabel=c("median ="),
+show.cox=TRUE, cox.cex=0.80, cox.digits=2)
+
+```
+
+
